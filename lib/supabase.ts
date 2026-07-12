@@ -18,12 +18,14 @@ const getCache = () => {
   return _cacheModule?.memberCache ?? null;
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy-id.supabase.co';
+const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const isValidUrl = rawSupabaseUrl.startsWith('https://') || rawSupabaseUrl.startsWith('http://');
+const supabaseUrl = isValidUrl ? rawSupabaseUrl : 'https://dummy-id.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy_key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export const isDummy = supabaseUrl.includes("dummy-id") || !process.env.NEXT_PUBLIC_SUPABASE_URL;
+export const isDummy = !isValidUrl || supabaseUrl.includes("dummy-id");
 
 if (!isDummy) {
   console.log("IRON LEDGER: Running in STRICT mode (Supabase Connected)");
