@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { supabase, getMemberPaymentSnapshot } from '@/lib/supabase';
 import { normalizeDeviceTimestamp } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+
 // Only fetch columns needed for payment computation (not photo_url, phone, gender, etc.)
 const SCANNER_MEMBER_COLS = 'id,name,package_type,trainer_package_type,has_cardio,trainer_commission,gym_fees,trainer_fees,admission_fee,amount_paid,package_start_date,created_at,payment_date,is_premium,fingerprint_template,zk_id';
 

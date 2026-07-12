@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 const TARGET_BASE = process.env.HARDWARE_BRIDGE_TARGET || "http://127.0.0.1:5000";
 
 type RouteContext = {
