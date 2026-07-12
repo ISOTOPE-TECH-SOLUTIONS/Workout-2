@@ -1223,29 +1223,40 @@ export const dbService = {
 
       const { data: pkgsData, error: pkgsError } = await supabase.from('gym_packages').select('*');
       if (!pkgsError && pkgsData && pkgsData.length > 0) {
+        // Supabase has data — use it as the source of truth
         cachedPackages = pkgsData.filter((p: any) => p.type === 'gym');
         cachedAddons = pkgsData.filter((p: any) => p.type === 'addon');
         cachedPTPackages = pkgsData.filter((p: any) => p.type === 'pt');
       } else {
-        // Database tables might not be seeded or created yet, seed fallback
-        cachedPackages = [...DEFAULT_PACKAGES];
-        cachedAddons = [...DEFAULT_ADDONS];
-        cachedPTPackages = [...DEFAULT_PT_PACKAGES];
+        // Supabase returned nothing — check if we have locally-saved packages
+        const localPackages = localStorage.getItem("wc2_packages");
+        const localAddons = localStorage.getItem("wc2_addons");
+        const localPTPackages = localStorage.getItem("wc2_pt_packages");
 
+        if (localPackages) cachedPackages = JSON.parse(localPackages);
+        else cachedPackages = [...DEFAULT_PACKAGES];
+
+        if (localAddons) cachedAddons = JSON.parse(localAddons);
+        else cachedAddons = [...DEFAULT_ADDONS];
+
+        if (localPTPackages) cachedPTPackages = JSON.parse(localPTPackages);
+        else cachedPTPackages = [...DEFAULT_PT_PACKAGES];
+
+        // Seed Supabase with current cached data
         try {
           const allSeed = [
-            ...DEFAULT_PACKAGES.map(p => ({ ...p, type: 'gym' })),
-            ...DEFAULT_ADDONS.map(a => ({ ...a, duration: 1, type: 'addon' })),
-            ...DEFAULT_PT_PACKAGES.map(pt => ({ ...pt, duration: 1, type: 'pt' }))
+            ...cachedPackages.map(p => ({ ...p, type: 'gym' })),
+            ...cachedAddons.map(a => ({ ...a, duration: a.duration ?? 1, type: 'addon' })),
+            ...cachedPTPackages.map(pt => ({ ...pt, duration: pt.duration ?? 1, type: 'pt' }))
           ];
-          await supabase.from('gym_packages').insert(allSeed);
+          await supabase.from('gym_packages').upsert(allSeed, { onConflict: 'id' });
           await supabase.from('system_settings').upsert([
-            { key: 'admission_fee', value: 2000 },
-            { key: 'zk_config', value: { ip: "192.168.1.201", port: 4370, autoSync: true } },
-            { key: 'security', value: { username: "Admin", password: "admin123" } }
-          ]);
+            { key: 'admission_fee', value: cachedSettings.admissionFee },
+            { key: 'zk_config', value: { ip: cachedSettings.zkIP, port: Number(cachedSettings.zkPort), autoSync: cachedSettings.zkAutoSync } },
+            { key: 'security', value: { username: cachedSettings.adminUser, password: cachedSettings.adminPass } }
+          ], { onConflict: 'key' });
         } catch (seedErr) {
-          console.warn("Could not auto-seed Supabase tables (they might not exist yet)", seedErr);
+          console.warn("Could not seed Supabase tables (they might not exist yet)", seedErr);
         }
       }
 
@@ -1293,9 +1304,19 @@ export const dbService = {
 
     if (!isDummy) {
       try {
-        await supabase.from('gym_packages').delete().eq('type', 'gym');
+        // Get current IDs in Supabase for this type, then delete ones no longer in the list
+        const { data: existing } = await supabase.from('gym_packages').select('id').eq('type', 'gym');
+        const existingIds = (existing || []).map((r: any) => r.id);
+        const newIds = packages.map(p => p.id);
+        const toDelete = existingIds.filter((id: string) => !newIds.includes(id));
+        if (toDelete.length > 0) {
+          await supabase.from('gym_packages').delete().in('id', toDelete);
+        }
         if (packages.length > 0) {
-          await supabase.from('gym_packages').insert(packages.map(p => ({ ...p, type: 'gym' })));
+          await supabase.from('gym_packages').upsert(
+            packages.map(p => ({ ...p, type: 'gym' })),
+            { onConflict: 'id' }
+          );
         }
       } catch (e) {
         console.error("Failed to save gym packages to Supabase", e);
@@ -1309,9 +1330,18 @@ export const dbService = {
 
     if (!isDummy) {
       try {
-        await supabase.from('gym_packages').delete().eq('type', 'addon');
+        const { data: existing } = await supabase.from('gym_packages').select('id').eq('type', 'addon');
+        const existingIds = (existing || []).map((r: any) => r.id);
+        const newIds = addons.map(a => a.id);
+        const toDelete = existingIds.filter((id: string) => !newIds.includes(id));
+        if (toDelete.length > 0) {
+          await supabase.from('gym_packages').delete().in('id', toDelete);
+        }
         if (addons.length > 0) {
-          await supabase.from('gym_packages').insert(addons.map(a => ({ ...a, duration: 1, type: 'addon' })));
+          await supabase.from('gym_packages').upsert(
+            addons.map(a => ({ ...a, duration: a.duration ?? 1, type: 'addon' })),
+            { onConflict: 'id' }
+          );
         }
       } catch (e) {
         console.error("Failed to save addons to Supabase", e);
@@ -1325,9 +1355,18 @@ export const dbService = {
 
     if (!isDummy) {
       try {
-        await supabase.from('gym_packages').delete().eq('type', 'pt');
+        const { data: existing } = await supabase.from('gym_packages').select('id').eq('type', 'pt');
+        const existingIds = (existing || []).map((r: any) => r.id);
+        const newIds = ptPackages.map(p => p.id);
+        const toDelete = existingIds.filter((id: string) => !newIds.includes(id));
+        if (toDelete.length > 0) {
+          await supabase.from('gym_packages').delete().in('id', toDelete);
+        }
         if (ptPackages.length > 0) {
-          await supabase.from('gym_packages').insert(ptPackages.map(pt => ({ ...pt, duration: 1, type: 'pt' })));
+          await supabase.from('gym_packages').upsert(
+            ptPackages.map(pt => ({ ...pt, duration: pt.duration ?? 1, type: 'pt' })),
+            { onConflict: 'id' }
+          );
         }
       } catch (e) {
         console.error("Failed to save PT packages to Supabase", e);
