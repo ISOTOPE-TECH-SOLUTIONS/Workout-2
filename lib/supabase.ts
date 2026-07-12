@@ -1245,9 +1245,9 @@ export const dbService = {
         // Seed Supabase with current cached data
         try {
           const allSeed = [
-            ...cachedPackages.map(p => ({ ...p, type: 'gym' })),
-            ...cachedAddons.map(a => ({ ...a, duration: a.duration ?? 1, type: 'addon' })),
-            ...cachedPTPackages.map(pt => ({ ...pt, duration: pt.duration ?? 1, type: 'pt' }))
+            ...cachedPackages.map((p: any) => ({ ...p, type: 'gym' })),
+            ...cachedAddons.map((a: any) => ({ ...a, duration: a.duration ?? 1, type: 'addon' })),
+            ...cachedPTPackages.map((pt: any) => ({ ...pt, duration: pt.duration ?? 1, type: 'pt' }))
           ];
           await supabase.from('gym_packages').upsert(allSeed, { onConflict: 'id' });
           await supabase.from('system_settings').upsert([
