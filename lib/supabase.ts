@@ -33,11 +33,32 @@ if (!isDummy) {
   console.warn("IRON LEDGER: Running in DUMMY mode (No Supabase detected)");
 }
 
-// Simulated Database Storage (Empty for Client Handover)
+// Simulated Database Storage — localStorage-backed so data survives page refresh
+const LS = {
+  get: (key: string, fallback: any[] = []) => {
+    if (typeof window === 'undefined') return fallback;
+    try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
+  },
+  set: (key: string, value: any[]) => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded */ }
+  }
+};
+
 let simulatedMembers: any[] = [];
 let simulatedTrainers: any[] = [];
 let simulatedLogs: any[] = [];
 let simulatedLedgerEntries: any[] = [];
+
+// Lazy-load from localStorage on first access
+const loadSimulated = () => {
+  if (typeof window === 'undefined') return;
+  simulatedMembers = LS.get('wc2_sim_members');
+  simulatedTrainers = LS.get('wc2_sim_trainers');
+  simulatedLogs = LS.get('wc2_sim_logs');
+  simulatedLedgerEntries = LS.get('wc2_sim_ledger');
+};
+if (typeof window !== 'undefined') loadSimulated();
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 
@@ -585,6 +606,7 @@ export const dbService = {
        last_visit: toLocalIsoWithOffset()
     };
     simulatedMembers.push(newMember);
+    LS.set('wc2_sim_members', simulatedMembers);
 
     // Dummy mode ledger sync
     if (amount_paid > 0) {
@@ -607,6 +629,7 @@ export const dbService = {
          description: desc,
          date: ledgerTimestamp
        });
+       LS.set('wc2_sim_ledger', simulatedLedgerEntries);
     }
   },
 
@@ -662,6 +685,7 @@ export const dbService = {
        simulatedMembers[idx].amount_paid = paymentSnapshot.totalPaid + amount;
        simulatedMembers[idx].payment_status = simulatedMembers[idx].amount_paid >= paymentSnapshot.recurringTotal ? 'completed' : 'due';
        simulatedMembers[idx].payment_date = paymentDate;
+       LS.set('wc2_sim_members', simulatedMembers);
 
        // Dummy mode ledger sync
        simulatedLedgerEntries.push({
@@ -672,6 +696,7 @@ export const dbService = {
          description: `Monthly Subscription Fee - ${simulatedMembers[idx].name}`,
          date: paymentDate
        });
+       LS.set('wc2_sim_ledger', simulatedLedgerEntries);
     }
   },
 
@@ -683,6 +708,7 @@ export const dbService = {
       return;
     }
     simulatedMembers = simulatedMembers.filter(m => m.id !== memberId);
+    LS.set('wc2_sim_members', simulatedMembers);
   },
 
   // Trainer Service Methods
@@ -718,6 +744,7 @@ export const dbService = {
         hire_date: new Date().toISOString()
     };
     simulatedTrainers.push(newTrainer);
+    LS.set('wc2_sim_trainers', simulatedTrainers);
   },
 
   deleteTrainer: async (trainerId: string) => {
@@ -728,6 +755,7 @@ export const dbService = {
         return;
     }
     simulatedTrainers = simulatedTrainers.filter(t => t.id !== trainerId);
+    LS.set('wc2_sim_trainers', simulatedTrainers);
   },
 
   assignTrainerToMember: async (memberId: string, trainerName: string) => {
@@ -1121,6 +1149,7 @@ export const dbService = {
       date: payload.date || toLocalIsoWithOffset()
     };
     simulatedLedgerEntries.push(newEntry);
+    LS.set('wc2_sim_ledger', simulatedLedgerEntries);
   },
 
   deleteLedgerEntry: async (entryId: string) => {
@@ -1130,6 +1159,7 @@ export const dbService = {
         return;
     }
     simulatedLedgerEntries = simulatedLedgerEntries.filter(e => e.id !== entryId);
+    LS.set('wc2_sim_ledger', simulatedLedgerEntries);
   },
 
   getNextZkId: async () => {
