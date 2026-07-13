@@ -60,7 +60,7 @@ export type CachedAttendanceLog = {
   status: "granted" | "denied";
   notes?: string;
   timestamp: string;
-  members?: { name?: string; phone?: string; photo_url?: string } | null;
+  members?: { name?: string | null; phone?: string | null; photo_url?: string | null } | null;
   [key: string]: any;
 };
 
