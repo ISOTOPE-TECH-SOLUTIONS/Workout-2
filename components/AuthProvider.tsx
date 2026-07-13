@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "./ui/
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Lock } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
+import { dbService } from "@/lib/supabase";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,13 +14,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isMounted, setIsMounted] = useState(false);
+  const [isLoadingCredentials, setIsLoadingCredentials] = useState(true);
 
   useEffect(() => {
-    setIsMounted(true);
-    const auth = localStorage.getItem("iron_ledger_auth_v2");
-    if (auth === "true") {
-      setIsAuthenticated(true);
-    }
+    const init = async () => {
+      setIsMounted(true);
+
+      // Check if already logged in first
+      const auth = localStorage.getItem("iron_ledger_auth_v2");
+      if (auth === "true") {
+        setIsAuthenticated(true);
+        setIsLoadingCredentials(false);
+        return;
+      }
+
+      // Always fetch credentials from Supabase (source of truth),
+      // not just localStorage — so all devices see the same password.
+      try {
+        await dbService.loadSettingsAndPackages();
+      } catch {
+        // Silently fall back to whatever is in localStorage already
+      } finally {
+        setIsLoadingCredentials(false);
+      }
+    };
+    init();
   }, []);
 
   if (!isMounted) return null; // Avoid hydration mismatch
@@ -30,18 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    let expectedUser = "Admin";
-    let expectedPass = "admin123";
 
-    try {
-      const rawSettings = localStorage.getItem("wc2_settings");
-      if (rawSettings) {
-        const parsed = JSON.parse(rawSettings);
-        if (parsed.adminUser) expectedUser = parsed.adminUser;
-        if (parsed.adminPass) expectedPass = parsed.adminPass;
-      }
-    } catch (err) {
-      console.warn("Could not parse security settings from localStorage", err);
+    // Read credentials from the freshly-loaded cached settings (populated above)
+    const settings = dbService.getCachedSettings();
+    const expectedUser = settings?.adminUser || "Admin";
+    const expectedPass = settings?.adminPass;
+
+    // If no password is configured at all, block access entirely
+    if (!expectedPass) {
+      setError("Could not load credentials. Please check your connection and refresh.");
+      return;
     }
 
     if (username === expectedUser && password === expectedPass) {
@@ -65,40 +82,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             <CardDescription>Authentication required for Workout Chapter 2</CardDescription>
          </CardHeader>
          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-6">
-               <div className="space-y-2">
-                  <Label htmlFor="username">Admin Username</Label>
-                  <Input 
-                     id="username" 
-                     type="text" 
-                     placeholder="e.g. Admin" 
-                     value={username} 
-                     onChange={e => setUsername(e.target.value)} 
-                     required 
-                     className="bg-background/80" 
-                  />
-               </div>
-               <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input 
-                     id="password" 
-                     type="password" 
-                     placeholder="••••••••" 
-                     value={password} 
-                     onChange={e => setPassword(e.target.value)} 
-                     required 
-                     className="bg-background/80" 
-                  />
-               </div>
-               {error && (
-                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-md text-center">
-                     <p className="text-sm font-medium text-red-500">{error}</p>
-                  </div>
-               )}
-               <Button type="submit" className="w-full text-base py-5 font-semibold transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:scale-[1.02]">
-                 Unlock Dashboard
-               </Button>
-            </form>
+            {isLoadingCredentials ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-3 text-muted-foreground">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
+                <p className="text-xs uppercase tracking-widest font-bold">Verifying credentials...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-6">
+                 <div className="space-y-2">
+                    <Label htmlFor="username">Admin Username</Label>
+                    <Input 
+                       id="username" 
+                       type="text" 
+                       placeholder="e.g. Admin" 
+                       value={username} 
+                       onChange={e => setUsername(e.target.value)} 
+                       required 
+                       className="bg-background/80" 
+                    />
+                 </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input 
+                       id="password" 
+                       type="password" 
+                       placeholder="••••••••" 
+                       value={password} 
+                       onChange={e => setPassword(e.target.value)} 
+                       required 
+                       className="bg-background/80" 
+                    />
+                 </div>
+                 {error && (
+                    <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-md text-center">
+                       <p className="text-sm font-medium text-red-500">{error}</p>
+                    </div>
+                 )}
+                 <Button type="submit" className="w-full text-base py-5 font-semibold transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:scale-[1.02]">
+                   Unlock Dashboard
+                 </Button>
+              </form>
+            )}
          </CardContent>
       </Card>
     </div>
