@@ -34,10 +34,10 @@ if (!isDummy) {
 }
 
 // Simulated in-memory storage (dummy mode only — no persistence across refresh)
-let simulatedMembers: any[] = [];
-let simulatedTrainers: any[] = [];
-let simulatedLogs: any[] = [];
-let simulatedLedgerEntries: any[] = [];
+export let simulatedMembers: any[] = [];
+export let simulatedTrainers: any[] = [];
+export let simulatedLogs: any[] = [];
+export let simulatedLedgerEntries: any[] = [];
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 
@@ -593,6 +593,12 @@ export const dbService = {
     };
     simulatedMembers.push(newMember);
 
+    // Sync dummy mode member with cache
+    const cache = getCache();
+    if (cache) {
+      cache.upsertMember(newMember);
+    }
+
 
     // Dummy mode ledger sync
     if (amount_paid > 0) {
@@ -729,6 +735,12 @@ export const dbService = {
         hire_date: new Date().toISOString()
     };
     simulatedTrainers.push(newTrainer);
+
+    // Sync dummy mode trainer with cache
+    const cache = getCache();
+    if (cache) {
+      cache.upsertTrainer(newTrainer);
+    }
   },
 
   deleteTrainer: async (trainerId: string) => {

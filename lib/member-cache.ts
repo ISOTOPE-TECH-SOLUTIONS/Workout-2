@@ -15,7 +15,7 @@
  *   VIEWER (no bridge)       → reads from cache, receives Realtime updates
  */
 
-import { supabase, isDummy, dbService } from "./supabase";
+import { supabase, isDummy, dbService, simulatedMembers, simulatedTrainers, simulatedLogs } from "./supabase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -123,6 +123,13 @@ function rebuildScannerIndex() {
 // ─── Supabase Loaders ────────────────────────────────────────────────────────
 
 async function loadMembers() {
+  if (isDummy) {
+    members.clear();
+    simulatedMembers.forEach((m: any) => members.set(m.id, m as CachedMember));
+    rebuildScannerIndex();
+    console.log(`${LOG_PREFIX} loaded ${members.size} members (dummy mode)`);
+    return;
+  }
   const { data, error } = await supabase.from("members").select("*");
   if (error) {
     console.error(`${LOG_PREFIX} failed to load members`, error);
@@ -135,6 +142,12 @@ async function loadMembers() {
 }
 
 async function loadTrainers() {
+  if (isDummy) {
+    trainers.clear();
+    simulatedTrainers.forEach((t: any) => trainers.set(t.id, t as CachedTrainer));
+    console.log(`${LOG_PREFIX} loaded ${trainers.size} trainers (dummy mode)`);
+    return;
+  }
   const { data, error } = await supabase.from("trainers").select("*");
   if (error) {
     console.error(`${LOG_PREFIX} failed to load trainers`, error);
@@ -146,6 +159,19 @@ async function loadTrainers() {
 }
 
 async function loadRecentLogs() {
+  if (isDummy) {
+    recentLogs = simulatedLogs.map(log => {
+      if (!log.members?.name && log.member_id) {
+        const m = members.get(log.member_id);
+        if (m) {
+          return { ...log, members: { name: m.name, phone: m.phone, photo_url: m.photo_url } };
+        }
+      }
+      return log;
+    }).reverse().slice(0, MAX_CACHED_LOGS);
+    console.log(`${LOG_PREFIX} loaded ${recentLogs.length} logs (dummy mode)`);
+    return;
+  }
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   
   const { data, error } = await supabase
