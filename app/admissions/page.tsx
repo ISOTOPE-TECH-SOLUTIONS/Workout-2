@@ -98,6 +98,7 @@ export default function AdmissionsPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
    const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
+   const [isBridgeActive, setIsBridgeActive] = useState(false);
 
   // Two-step enrollment state
   const [enrollState, setEnrollState] = useState<EnrollState>('IDLE');
@@ -131,6 +132,14 @@ export default function AdmissionsPage() {
           // Auto-suggest next Scanner ID
           setFormData(prev => ({ ...prev, zk_id: nextId }));
           setEmployeeId(nextEmployeeId);
+
+          // Check if the hardware bridge is reachable
+          try {
+            const status = await hardwareApi.getStatus();
+            setIsBridgeActive(!!status?.online);
+          } catch {
+            setIsBridgeActive(false);
+          }
     };
     initPage();
   }, []);
@@ -332,14 +341,21 @@ export default function AdmissionsPage() {
     }
 
     // 3. Scanner Enrollment Check
-    if (enrollState !== 'STEP2_DONE') {
-      setError("Complete both enrollment steps (register data + scan fingerprint) before submitting.");
+    // If the bridge is online: full 2-step enrollment (fingerprint) is required.
+    // If the bridge is offline: allow saving with just the zk_id (enrollment can be done later).
+    const enrollmentStarted = enrollState !== 'IDLE' && enrollState !== 'FAILED';
+    if (isBridgeActive && enrollmentStarted && enrollState !== 'STEP2_DONE') {
+      setError("Fingerprint enrollment started but not completed. Finish scanning or reset enrollment.");
+      return;
+    }
+    if (isBridgeActive && !enrollmentStarted) {
+      setError("Bridge is online — please complete biometric enrollment before saving.");
       return;
     }
 
-    // 4. Scanner ID Validation
+    // 4. Scanner ID Validation (required in all cases)
     if (!formData.zk_id || !/^\d+$/.test(formData.zk_id.trim())) {
-      setError("Scanner ID is invalid or missing. Please restart enrollment.");
+      setError("Scanner ID is required and must be numeric (e.g. 1, 2, 3...).");
       return;
     }
 
@@ -811,12 +827,21 @@ export default function AdmissionsPage() {
                       <p className="text-xs text-yellow-500/70 font-medium leading-tight">{bridgeNotice}</p>
                     </div>
                   )}
+                  {!isBridgeActive && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-lg flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-1 shrink-0 animate-pulse" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-0.5">Bridge Offline — Manual Mode</p>
+                        <p className="text-xs text-amber-400/70 leading-tight">The hardware bridge is not running. Set a Scanner ID manually above and save — fingerprint enrollment can be completed later when the bridge is online.</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
               {/* Mega Submit Button */}
               <div className="space-y-4">
-                <Button type="submit" className="w-full h-20 text-xl font-[1000] italic uppercase tracking-tighter group relative overflow-hidden" disabled={!formData.name || !formData.phone || enrollState !== 'STEP2_DONE' || isSubmitting}>
+                <Button type="submit" className="w-full h-20 text-xl font-[1000] italic uppercase tracking-tighter group relative overflow-hidden" disabled={!formData.name || !formData.phone || (!isBridgeActive && !formData.zk_id) || (isBridgeActive && enrollState !== 'STEP2_DONE') || isSubmitting}>
                   {isSubmitting ? (
                     <div className="flex items-center gap-4">
                       <Loader2 className="w-8 h-8 animate-spin" />

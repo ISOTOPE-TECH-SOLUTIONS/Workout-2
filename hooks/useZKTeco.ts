@@ -132,6 +132,20 @@ export function useZKTeco() {
         // Subscribe to cache version changes (fires on new log append)
         const unsubCache = memberCache.subscribe(checkForNewLogs);
 
+        // Prime the ref NOW with whatever the latest log already is.
+        // This prevents the first real scan after page load from being
+        // swallowed by the "skip first check" guard.
+        const primeLogs = () => {
+            const logs = memberCache.getRecentLogs(1);
+            if (logs && logs.length > 0 && (logs[0] as any)?.id) {
+                lastSeenLogIdRef.current = (logs[0] as any).id;
+            }
+        };
+        // Try immediately (cache may already be ready)
+        primeLogs();
+        // Also try after a short delay in case initialize() hasn't finished yet
+        const primeTimeout = setTimeout(primeLogs, 2000);
+
         // For dummy mode, also poll since cache isn't wired to Realtime
         let dummyPollInterval: ReturnType<typeof setInterval> | null = null;
         if (isDummy) {
@@ -140,6 +154,7 @@ export function useZKTeco() {
 
         return () => {
             unsubCache();
+            clearTimeout(primeTimeout);
             if (statusInterval) clearInterval(statusInterval);
             if (dummyPollInterval) clearInterval(dummyPollInterval);
             if (clearEventTimeoutRef.current) {
