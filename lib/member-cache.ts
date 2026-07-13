@@ -21,11 +21,11 @@ import { supabase, isDummy, dbService, simulatedMembers, simulatedTrainers, simu
 
 export type CachedMember = {
   id: string;
-  serial_number?: string;
+  serial_number?: string | null;
   name: string;
-  phone?: string;
-  gender?: string;
-  trainer_name?: string;
+  phone?: string | null;
+  gender?: string | null;
+  trainer_name?: string | null;
   gym_fees?: number;
   admission_fee?: number;
   trainer_fees?: number;
@@ -34,15 +34,15 @@ export type CachedMember = {
   trainer_package_type?: string;
   has_cardio?: boolean;
   trainer_commission?: number;
-  package_start_date?: string;
-  payment_date?: string;
-  payment_status?: string;
-  fingerprint_template?: string;
-  zk_id?: string;
-  last_visit?: string;
+  package_start_date?: string | null;
+  payment_date?: string | null;
+  payment_status?: string | null;
+  fingerprint_template?: string | null;
+  zk_id?: string | null;
+  last_visit?: string | null;
   is_premium?: boolean;
   created_at?: string;
-  photo_url?: string;
+  photo_url?: string | null;
   [key: string]: any;
 };
 
