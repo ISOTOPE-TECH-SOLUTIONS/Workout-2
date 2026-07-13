@@ -78,7 +78,17 @@ export default function Dashboard() {
 
   const fetchLogs = async () => {
     const recent = await dbService.getRecentLogs();
-    setLogs(recent || []);
+    // Enrich logs with member data from cache if the Supabase join didn't populate it
+    const enriched = (recent || []).map((log: any) => {
+      if (!log.members?.name && log.member_id) {
+        const m = memberCache.getMemberById(log.member_id);
+        if (m) {
+          return { ...log, members: { name: m.name, phone: m.phone, photo_url: m.photo_url } };
+        }
+      }
+      return log;
+    });
+    setLogs(enriched);
   };
 
   const fetchAnalytics = async () => {

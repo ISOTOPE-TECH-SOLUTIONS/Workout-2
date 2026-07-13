@@ -55,12 +55,38 @@ export async function POST(req: Request) {
     });
 
     // Use column-trimmed query for bandwidth efficiency
-    let member = normalizedUserId
-      ? (await supabase.from('members').select(SCANNER_MEMBER_COLS).or(`fingerprint_template.eq.${normalizedUserId},zk_id.eq.${normalizedUserId}`).single()).data
-      : null;
+    // Note: use filter() with proper PostgREST syntax for OR on text columns
+    let member: any = null;
+
+    if (normalizedUserId) {
+      const { data: rows1 } = await supabase
+        .from('members')
+        .select(SCANNER_MEMBER_COLS)
+        .or(`fingerprint_template.eq."${normalizedUserId}",zk_id.eq."${normalizedUserId}"`);
+      member = rows1?.[0] ?? null;
+      // Fallback: try without quotes (for purely numeric zk_id stored as TEXT)
+      if (!member) {
+        const { data: rows2 } = await supabase
+          .from('members')
+          .select(SCANNER_MEMBER_COLS)
+          .or(`fingerprint_template.eq.${normalizedUserId},zk_id.eq.${normalizedUserId}`);
+        member = rows2?.[0] ?? null;
+      }
+    }
 
     if (!member && fallbackUid) {
-      member = (await supabase.from('members').select(SCANNER_MEMBER_COLS).or(`fingerprint_template.eq.${fallbackUid},zk_id.eq.${fallbackUid}`).single()).data;
+      const { data: rows3 } = await supabase
+        .from('members')
+        .select(SCANNER_MEMBER_COLS)
+        .or(`fingerprint_template.eq."${fallbackUid}",zk_id.eq."${fallbackUid}"`);
+      member = rows3?.[0] ?? null;
+      if (!member) {
+        const { data: rows4 } = await supabase
+          .from('members')
+          .select(SCANNER_MEMBER_COLS)
+          .or(`fingerprint_template.eq.${fallbackUid},zk_id.eq.${fallbackUid}`);
+        member = rows4?.[0] ?? null;
+      }
     }
 
     if (!member) {

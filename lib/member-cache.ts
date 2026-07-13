@@ -159,7 +159,17 @@ async function loadRecentLogs() {
     console.error(`${LOG_PREFIX} failed to load recent logs`, error);
     return;
   }
-  recentLogs = (data || []) as CachedAttendanceLog[];
+  const raw = (data || []) as CachedAttendanceLog[];
+  // Enrich logs whose PostgREST join didn't return member data
+  recentLogs = raw.map(log => {
+    if (!log.members?.name && log.member_id) {
+      const m = members.get(log.member_id);
+      if (m) {
+        return { ...log, members: { name: m.name, phone: m.phone, photo_url: m.photo_url } };
+      }
+    }
+    return log;
+  });
   console.log(`${LOG_PREFIX} loaded ${recentLogs.length} logs from the last 24 hours`);
 }
 
@@ -276,7 +286,10 @@ export const memberCache = {
       console.log(`${LOG_PREFIX} initializing cache...`);
       const start = Date.now();
 
-      await Promise.all([loadMembers(), loadTrainers(), loadRecentLogs(), dbService.loadSettingsAndPackages()]);
+      // Load members + settings in parallel first (logs enrichment needs the members Map)
+      await Promise.all([loadMembers(), loadTrainers(), dbService.loadSettingsAndPackages()]);
+      // Load logs second so enrichment can look up member names from the populated Map
+      await loadRecentLogs();
 
       lastFullSync = Date.now();
       initialized = true;
@@ -422,7 +435,8 @@ export const memberCache = {
     if (isDummy) return;
 
     console.log(`${LOG_PREFIX} force-refreshing cache...`);
-    await Promise.all([loadMembers(), loadTrainers(), loadRecentLogs()]);
+    await Promise.all([loadMembers(), loadTrainers()]);
+    await loadRecentLogs();
     lastFullSync = Date.now();
     bump();
   },

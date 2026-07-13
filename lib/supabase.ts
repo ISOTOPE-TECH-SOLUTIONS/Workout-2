@@ -395,13 +395,19 @@ export const dbService = {
       if (cache?.isReady()) {
         return cache.getMemberByScannerId(fingerprint);
       }
-      // Fallback: direct Supabase query (only before cache is initialized)
-      const { data } = await supabase
+      // Fallback: direct Supabase query (only before cache is initialized).
+      // Use array select + [0] instead of .single() to avoid throwing on no match.
+      const { data: rows1 } = await supabase
         .from('members')
         .select('*')
-        .or(`fingerprint_template.eq.${fingerprint},zk_id.eq.${fingerprint}`)
-        .single();
-      return data;
+        .or(`fingerprint_template.eq."${fingerprint}",zk_id.eq."${fingerprint}"`);
+      if (rows1?.[0]) return rows1[0];
+      // Retry without quotes for numeric-only IDs stored as plain TEXT
+      const { data: rows2 } = await supabase
+        .from('members')
+        .select('*')
+        .or(`fingerprint_template.eq.${fingerprint},zk_id.eq.${fingerprint}`);
+      return rows2?.[0] ?? null;
     }
     return simulatedMembers.find(m => m.fingerprint_template === fingerprint || m.zk_id === fingerprint) || null;
   },
@@ -539,6 +545,7 @@ export const dbService = {
           package_type: normalizedPackageType,
           trainer_package_type: payload.trainer_package_type || 'none',
           has_cardio: normalizedHasCardio,
+          is_premium: !!payload.is_premium,
           trainer_commission: Number(payload.trainer_commission) || 0,
            package_start_date: normalizedPackageStartDate,
            // For new admissions, billing cycle starts from selected package_start_date.
@@ -1038,6 +1045,8 @@ export const dbService = {
       ...merged,
       payment_status: snapshot.isDue ? 'due' : 'completed',
     };
+    // Persist the updated member list so changes survive page refreshes in dummy mode
+    LS.set('wc2_sim_members', simulatedMembers);
   },
 
   getTrainerStats: async () => {
