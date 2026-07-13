@@ -47,7 +47,6 @@ const toLocalIsoWithOffset = (date: Date = new Date()) => {
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMins}`;
 };
 
-const SYNC_POLL_KEY = "iron_ledger_last_sync_ts";
 
 export function useHardwareSync() {
     const [isManagerOnline, setIsManagerOnline] = useState(false);
@@ -55,14 +54,9 @@ export function useHardwareSync() {
     const abortRef = useRef<AbortController | null>(null);
     const reconnectAttemptRef = useRef(0);
 
-    // Initialize lastSyncTs from localStorage on mount
+    // Initialize lastSyncTs to 1 hour ago on mount (no localStorage needed)
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem(SYNC_POLL_KEY);
-            setLastSyncTs(stored || new Date(Date.now() - 3600000).toISOString());
-        } catch {
-            setLastSyncTs(new Date(Date.now() - 3600000).toISOString());
-        }
+        setLastSyncTs(new Date(Date.now() - 3600000).toISOString());
     }, []);
 
     /**
@@ -134,15 +128,10 @@ export function useHardwareSync() {
             console.error(`${DEVICE_LOG_PREFIX} failed to sync scan`, { normalizedUserId, error: e });
         }
 
-        // Update last processed timestamp
+        // Update last processed timestamp (in-memory only)
         const eventMs = parseTimestampMs(eventTimestamp);
         if (eventMs > 0) {
             const latestTs = new Date(eventMs).toISOString();
-            try {
-                localStorage.setItem(SYNC_POLL_KEY, latestTs);
-            } catch {
-                // Ignore storage write failures.
-            }
             setLastSyncTs(latestTs);
         }
     }, []);

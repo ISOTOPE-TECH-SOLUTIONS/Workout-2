@@ -85,7 +85,7 @@ export function Sidebar({ isOpen, onClose, isMobile, notificationsCount = 0 }: S
         <div className="p-4 border-t border-border mt-auto space-y-4">
           <button 
             onClick={() => {
-              localStorage.removeItem("iron_ledger_auth_v2");
+              sessionStorage.removeItem("iron_ledger_auth_v2");
               window.location.reload();
             }}
             className="w-full py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"

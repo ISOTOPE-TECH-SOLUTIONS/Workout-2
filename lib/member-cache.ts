@@ -272,7 +272,7 @@ export const memberCache = {
    */
   async initialize(): Promise<void> {
     if (isDummy) {
-      // Still load settings/packages from localStorage in dummy mode
+      // Load in-memory defaults for dummy mode (no persistence)
       // so edits persist across refreshes even without Supabase
       await dbService.loadSettingsAndPackages();
       initialized = true;

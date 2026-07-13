@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsMounted(true);
 
       // Check if already logged in first
-      const auth = localStorage.getItem("iron_ledger_auth_v2");
+      const auth = sessionStorage.getItem("iron_ledger_auth_v2");
       if (auth === "true") {
         setIsAuthenticated(true);
         setIsLoadingCredentials(false);
@@ -29,11 +29,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Always fetch credentials from Supabase (source of truth),
-      // not just localStorage — so all devices see the same password.
+      // so all devices see the same password.
       try {
         await dbService.loadSettingsAndPackages();
       } catch {
-        // Silently fall back to whatever is in localStorage already
+        // Silently fall back to in-memory defaults on error
       } finally {
         setIsLoadingCredentials(false);
       }
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (username === expectedUser && password === expectedPass) {
-      localStorage.setItem("iron_ledger_auth_v2", "true");
+      sessionStorage.setItem("iron_ledger_auth_v2", "true");
       setIsAuthenticated(true);
       setError("");
     } else {

@@ -33,32 +33,11 @@ if (!isDummy) {
   console.warn("IRON LEDGER: Running in DUMMY mode (No Supabase detected)");
 }
 
-// Simulated Database Storage — localStorage-backed so data survives page refresh
-const LS = {
-  get: (key: string, fallback: any[] = []) => {
-    if (typeof window === 'undefined') return fallback;
-    try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
-  },
-  set: (key: string, value: any[]) => {
-    if (typeof window === 'undefined') return;
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded */ }
-  }
-};
-
+// Simulated in-memory storage (dummy mode only — no persistence across refresh)
 let simulatedMembers: any[] = [];
 let simulatedTrainers: any[] = [];
 let simulatedLogs: any[] = [];
 let simulatedLedgerEntries: any[] = [];
-
-// Lazy-load from localStorage on first access
-const loadSimulated = () => {
-  if (typeof window === 'undefined') return;
-  simulatedMembers = LS.get('wc2_sim_members');
-  simulatedTrainers = LS.get('wc2_sim_trainers');
-  simulatedLogs = LS.get('wc2_sim_logs');
-  simulatedLedgerEntries = LS.get('wc2_sim_ledger');
-};
-if (typeof window !== 'undefined') loadSimulated();
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 
@@ -1231,21 +1210,15 @@ export const dbService = {
   loadSettingsAndPackages: async () => {
     try {
       if (isDummy) {
-        const localSettings = localStorage.getItem("wc2_settings");
-        if (localSettings) {
-          const parsed = JSON.parse(localSettings);
-          cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
-        }
-        const localPackages = localStorage.getItem("wc2_packages");
-        if (localPackages) cachedPackages = JSON.parse(localPackages);
-        const localAddons = localStorage.getItem("wc2_addons");
-        if (localAddons) cachedAddons = JSON.parse(localAddons);
-        const localPTPackages = localStorage.getItem("wc2_pt_packages");
-        if (localPTPackages) cachedPTPackages = JSON.parse(localPTPackages);
+        // Dummy mode: always use in-memory defaults (no persistence)
+        cachedSettings = { ...DEFAULT_SETTINGS };
+        cachedPackages = [...DEFAULT_PACKAGES];
+        cachedAddons = [...DEFAULT_ADDONS];
+        cachedPTPackages = [...DEFAULT_PT_PACKAGES];
         return;
       }
 
-      // STRICT MODE: Fetch from Supabase tables
+      // STRICT MODE: Supabase is the single source of truth
       const { data: settingsData, error: settingsError } = await supabase.from('system_settings').select('*');
       if (!settingsError && settingsData) {
         settingsData.forEach(row => {
@@ -1264,26 +1237,14 @@ export const dbService = {
 
       const { data: pkgsData, error: pkgsError } = await supabase.from('gym_packages').select('*');
       if (!pkgsError && pkgsData && pkgsData.length > 0) {
-        // Supabase has data — use it as the source of truth
         cachedPackages = pkgsData.filter((p: any) => p.type === 'gym');
         cachedAddons = pkgsData.filter((p: any) => p.type === 'addon');
         cachedPTPackages = pkgsData.filter((p: any) => p.type === 'pt');
       } else {
-        // Supabase returned nothing — check if we have locally-saved packages
-        const localPackages = localStorage.getItem("wc2_packages");
-        const localAddons = localStorage.getItem("wc2_addons");
-        const localPTPackages = localStorage.getItem("wc2_pt_packages");
-
-        if (localPackages) cachedPackages = JSON.parse(localPackages);
-        else cachedPackages = [...DEFAULT_PACKAGES];
-
-        if (localAddons) cachedAddons = JSON.parse(localAddons);
-        else cachedAddons = [...DEFAULT_ADDONS];
-
-        if (localPTPackages) cachedPTPackages = JSON.parse(localPTPackages);
-        else cachedPTPackages = [...DEFAULT_PT_PACKAGES];
-
-        // Seed Supabase with current cached data
+        // Supabase returned nothing — seed with defaults
+        cachedPackages = [...DEFAULT_PACKAGES];
+        cachedAddons = [...DEFAULT_ADDONS];
+        cachedPTPackages = [...DEFAULT_PT_PACKAGES];
         try {
           const allSeed = [
             ...cachedPackages.map((p: any) => ({ ...p, type: 'gym' })),
@@ -1297,31 +1258,21 @@ export const dbService = {
             { key: 'security', value: { username: cachedSettings.adminUser, password: cachedSettings.adminPass } }
           ], { onConflict: 'key' });
         } catch (seedErr) {
-          console.warn("Could not seed Supabase tables (they might not exist yet)", seedErr);
+          console.warn("Could not seed Supabase tables", seedErr);
         }
       }
-
-      localStorage.setItem("wc2_settings", JSON.stringify(cachedSettings));
-      localStorage.setItem("wc2_packages", JSON.stringify(cachedPackages));
-      localStorage.setItem("wc2_addons", JSON.stringify(cachedAddons));
-      localStorage.setItem("wc2_pt_packages", JSON.stringify(cachedPTPackages));
     } catch (e) {
-      console.warn("Using local settings fallback", e);
-      const localSettings = localStorage.getItem("wc2_settings");
-      if (localSettings) cachedSettings = JSON.parse(localSettings);
-      const localPackages = localStorage.getItem("wc2_packages");
-      if (localPackages) cachedPackages = JSON.parse(localPackages);
-      const localAddons = localStorage.getItem("wc2_addons");
-      if (localAddons) cachedAddons = JSON.parse(localAddons);
-      const localPTPackages = localStorage.getItem("wc2_pt_packages");
-      if (localPTPackages) cachedPTPackages = JSON.parse(localPTPackages);
+      // Supabase unreachable — fall back to in-memory defaults
+      console.warn("Could not load settings from Supabase, using in-memory defaults", e);
+      cachedSettings = { ...DEFAULT_SETTINGS };
+      cachedPackages = [...DEFAULT_PACKAGES];
+      cachedAddons = [...DEFAULT_ADDONS];
+      cachedPTPackages = [...DEFAULT_PT_PACKAGES ];
     }
   },
 
   saveSettings: async (settings: any) => {
     cachedSettings = { ...cachedSettings, ...settings };
-    localStorage.setItem("wc2_settings", JSON.stringify(cachedSettings));
-
     if (!isDummy) {
       try {
         await supabase.from('system_settings').upsert({ key: 'admission_fee', value: cachedSettings.admissionFee });
@@ -1341,8 +1292,6 @@ export const dbService = {
 
   savePackages: async (packages: any[]) => {
     cachedPackages = packages;
-    localStorage.setItem("wc2_packages", JSON.stringify(cachedPackages));
-
     if (!isDummy) {
       try {
         // Get current IDs in Supabase for this type, then delete ones no longer in the list
@@ -1367,8 +1316,6 @@ export const dbService = {
 
   saveAddons: async (addons: any[]) => {
     cachedAddons = addons;
-    localStorage.setItem("wc2_addons", JSON.stringify(cachedAddons));
-
     if (!isDummy) {
       try {
         const { data: existing } = await supabase.from('gym_packages').select('id').eq('type', 'addon');
@@ -1392,8 +1339,6 @@ export const dbService = {
 
   savePTPackages: async (ptPackages: any[]) => {
     cachedPTPackages = ptPackages;
-    localStorage.setItem("wc2_pt_packages", JSON.stringify(cachedPTPackages));
-
     if (!isDummy) {
       try {
         const { data: existing } = await supabase.from('gym_packages').select('id').eq('type', 'pt');
