@@ -119,8 +119,11 @@ export default function LedgerPage() {
               {timeframe === 'daily' && (
                 <input 
                   type="date"
-                  value={selectedDate.toISOString().split('T')[0]}
-                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                  value={`${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`}
+                  onChange={(e) => {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    setSelectedDate(new Date(y, m - 1, d));
+                  }}
                   className="bg-secondary/20 border border-border/40 rounded-lg px-3 py-1 text-[10px] font-bold uppercase tracking-widest outline-none focus:ring-1 focus:ring-primary h-8"
                 />
               )}
