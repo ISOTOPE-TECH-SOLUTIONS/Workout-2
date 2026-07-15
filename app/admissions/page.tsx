@@ -45,14 +45,16 @@ const getDefaultFormData = (mode: AdmissionMode, zkId: string = "") => ({
    package_type: mode === 'employee' ? "Employee" : "Basic",
    trainer_package_type: "none",
    membership_fee: mode === 'employee' ? "0" : "2500",
-   admission_fee: mode === 'employee' ? "0" : "1000",
+   admission_fee: mode === 'employee' ? "0" : "2000",
    trainer_fees: "0",
    amount_paid: mode === 'employee' ? "0" : "",
    zk_id: zkId,
-    is_premium: mode === 'employee',
-    has_cardio: false,
-    trainer_commission: "0",
-    package_start_date: getTodayLocalDate()
+   is_premium: mode === 'employee',
+   has_cardio: false,
+   trainer_commission: "0",
+   package_start_date: getTodayLocalDate(),
+   custom_package_duration: "3",
+   custom_package_price: "12000"
 });
 
 export default function AdmissionsPage() {
@@ -150,8 +152,13 @@ export default function AdmissionsPage() {
          return;
       }
 
-      const selectedPkg = packages.find(p => p.id === formData.package_type || p.name === formData.package_type);
-      let mFee = selectedPkg ? selectedPkg.price : 5000;
+      let mFee = 5000;
+      if (formData.package_type === 'custom') {
+         mFee = Number(formData.custom_package_price) || 0;
+      } else {
+         const selectedPkg = packages.find(p => p.id === formData.package_type || p.name === formData.package_type);
+         mFee = selectedPkg ? selectedPkg.price : 5000;
+      }
 
       // Cardio Add-on Price
       const cardioAddonPkg = addons.find(a => a.name.toLowerCase().includes('cardio') || a.id === 'add_cardio');
@@ -170,8 +177,11 @@ export default function AdmissionsPage() {
          tFee = Number(formData.trainer_commission) || 0;
       }
 
-      const standardAdmissionFee = settings ? settings.admissionFee : 2000;
-      const aFee = formData.is_premium ? 0 : standardAdmissionFee;
+       const standardAdmissionFee = settings ? settings.admissionFee : 2000;
+       let aFee = formData.is_premium ? 0 : Number(formData.admission_fee);
+       if (Number.isNaN(aFee)) {
+          aFee = standardAdmissionFee;
+       }
 
       setFormData(prev => ({ 
         ...prev, 
@@ -180,7 +190,7 @@ export default function AdmissionsPage() {
         admission_fee: String(aFee),
         amount_paid: String(mFee + tFee + aFee)
       }));
-   }, [admissionMode, formData.package_type, formData.trainer_package_type, formData.is_premium, formData.has_cardio, formData.trainer_commission, packages, addons, ptPackages, settings]);
+   }, [admissionMode, formData.package_type, formData.trainer_package_type, formData.is_premium, formData.has_cardio, formData.trainer_commission, formData.custom_package_price, formData.admission_fee, packages, addons, ptPackages, settings]);
 
   /**
    * Dynamic button handler — dispatches to Step 1 or Step 2
@@ -387,8 +397,14 @@ export default function AdmissionsPage() {
          });
       } else {
          // Keep one-time admission separate from recurring gym_fees.
+         const isCustom = formData.package_type === "custom";
+         const finalPackageType = isCustom 
+            ? `Custom (${formData.custom_package_duration} Months)` 
+            : formData.package_type;
+
          await dbService.createMember({
             ...formData,
+            package_type: finalPackageType,
             has_cardio: cardioOnlySelected ? false : formData.has_cardio,
             gym_fees: Number(formData.membership_fee)
          });
@@ -642,6 +658,7 @@ export default function AdmissionsPage() {
                               {packages.map(p => (
                                 <option key={p.id} value={p.id} className="bg-[#0f172a]">{p.name} ({p.price.toLocaleString()} PKR)</option>
                               ))}
+                              <option value="custom" className="bg-[#0f172a]">Custom Package...</option>
                             </select>
                           </div>
                           <div className="space-y-2">
@@ -655,6 +672,35 @@ export default function AdmissionsPage() {
                             </select>
                           </div>
                         </div>
+
+                        {formData.package_type === 'custom' && (
+                          <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-yellow-500/5 border border-yellow-500/20 animate-in slide-in-from-top-2 duration-300">
+                            <div className="space-y-2">
+                              <Label htmlFor="custom_package_duration" className="text-yellow-500 font-bold uppercase text-[10px]">Custom Duration (Months)</Label>
+                              <select 
+                                id="custom_package_duration" 
+                                value={formData.custom_package_duration} 
+                                onChange={handleChange}
+                                className="flex h-12 w-full rounded-md border border-yellow-500/30 bg-background/50 px-3 py-2 text-base ring-offset-background focus:outline-none focus:ring-2 focus:ring-yellow-500 cursor-pointer"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 24].map(m => (
+                                  <option key={m} value={String(m)} className="bg-[#0f172a]">{m} Month{m > 1 ? 's' : ''}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="custom_package_price" className="text-yellow-500 font-bold uppercase text-[10px]">Custom Amount (PKR)</Label>
+                              <Input 
+                                id="custom_package_price" 
+                                type="number" 
+                                placeholder="Enter custom price..." 
+                                value={formData.custom_package_price} 
+                                onChange={handleChange} 
+                                className="h-12 border-yellow-500/30 bg-yellow-500/5 focus-visible:ring-yellow-500 font-bold text-white" 
+                              />
+                            </div>
+                          </div>
+                        )}
 
                         {formData.trainer_package_type === 'Commissioned' && (
                           <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
@@ -727,7 +773,7 @@ export default function AdmissionsPage() {
                             onChange={(e) => setFormData(p => ({ ...p, has_cardio: e.target.checked }))}
                             className="w-5 h-5 rounded border-emerald-500/40 text-emerald-500 focus:ring-emerald-500 cursor-pointer bg-black/20"
                           />
-                          <Label htmlFor="has_cardio" className="text-[10px] text-emerald-500 font-black uppercase cursor-pointer tracking-wider">Cardio (+2.5k)</Label>
+                          <Label htmlFor="has_cardio" className="text-[10px] text-emerald-500 font-black uppercase cursor-pointer tracking-wider">Cardio</Label>
                         </div>
                       )}
                       
@@ -736,10 +782,35 @@ export default function AdmissionsPage() {
                           type="checkbox"
                           id="is_premium"
                           checked={formData.is_premium}
-                          onChange={(e) => setFormData(p => ({ ...p, is_premium: e.target.checked }))}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormData(p => ({
+                              ...p,
+                              is_premium: checked,
+                              admission_fee: checked ? "0" : (p.admission_fee === "0" ? String(settings ? settings.admissionFee : 2000) : p.admission_fee)
+                            }));
+                          }}
                           className="w-5 h-5 rounded border-emerald-500/40 text-emerald-500 focus:ring-emerald-500 cursor-pointer bg-black/20"
                         />
                         <Label htmlFor="is_premium" className="text-[10px] text-emerald-500 font-black uppercase cursor-pointer tracking-wider">Premium (VIP)</Label>
+                      </div>
+
+                      <div className="flex items-center gap-3 border-l border-emerald-500/20 pl-6">
+                        <input
+                          type="checkbox"
+                          id="admission_1000"
+                          checked={formData.admission_fee === "1000"}
+                          disabled={formData.is_premium}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormData(p => ({
+                              ...p,
+                              admission_fee: checked ? "1000" : String(settings ? settings.admissionFee : 2000)
+                            }));
+                          }}
+                          className="w-5 h-5 rounded border-emerald-500/40 text-emerald-500 focus:ring-emerald-500 cursor-pointer bg-black/20 disabled:opacity-50"
+                        />
+                        <Label htmlFor="admission_1000" className="text-[10px] text-emerald-500 font-black uppercase cursor-pointer tracking-wider disabled:opacity-50">Admission 1000</Label>
                       </div>
                     </div>
 

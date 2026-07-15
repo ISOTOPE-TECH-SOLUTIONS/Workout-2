@@ -124,7 +124,7 @@ export default function NotificationsPage() {
                              </div>
                           </div>
 
-                          <Link href="/payments" className="block">
+                          <Link href="/members&payments" className="block">
                              <Button variant="outline" className="w-full h-8 text-xs gap-2 group-hover:bg-primary group-hover:text-primary-foreground transition-all">
                                 Go to Ledger <ArrowRight className="w-3 h-3" />
                              </Button>

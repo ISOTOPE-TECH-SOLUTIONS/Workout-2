@@ -148,6 +148,12 @@ let cachedPTPackages = [...DEFAULT_PT_PACKAGES];
 
 const getGymPackageDurationMonths = (packageType: unknown) => {
   const normalized = String(packageType || '').toLowerCase();
+  
+  const customMatch = normalized.match(/custom\s*\((\d+)\s*month/);
+  if (customMatch) {
+    return parseInt(customMatch[1], 10);
+  }
+
   const pkg = cachedPackages.find(p => p.name.toLowerCase() === normalized || p.id.toLowerCase() === normalized);
   if (pkg) return pkg.duration;
   
@@ -165,6 +171,9 @@ const getGymCycleDays = (packageType: unknown) => {
 
 const getPackageExpectedGymFee = (packageType: unknown, hasCardio: unknown) => {
   const normalized = String(packageType || '').toLowerCase();
+  if (normalized.startsWith('custom')) {
+    return null;
+  }
   
   const pkg = cachedPackages.find(p => p.name.toLowerCase() === normalized || p.id.toLowerCase() === normalized);
   let basePrice = 0;
@@ -787,6 +796,7 @@ export const dbService = {
     trainer_commission?: number,
     reset_start_date?: boolean,
     amount_paid?: number,
+    custom_gym_fees?: number,
   }) => {
     const normalizedPackage = payload.package_type || 'Basic';
     const normalizedTrainerPackage = payload.trainer_package_type || 'none';
@@ -800,7 +810,13 @@ export const dbService = {
     const oldTrainerFee = oldSnapshot.recurringTrainerFees;
     const oldGymCycleDays = oldSnapshot.gymCycleDays;
     
-    const nextGymFee = getPackageExpectedGymFee(normalizedPackage, normalizedCardio) ?? 0;
+    const isCustom = String(normalizedPackage).toLowerCase().startsWith('custom');
+    let nextGymFee = 0;
+    if (isCustom) {
+      nextGymFee = payload.custom_gym_fees !== undefined ? payload.custom_gym_fees : (Number(member.gym_fees) || 0);
+    } else {
+      nextGymFee = getPackageExpectedGymFee(normalizedPackage, normalizedCardio) ?? 0;
+    }
     const nextTrainerFee = getPackageExpectedTrainerFee(normalizedTrainerPackage, normalizedCommission) ?? 0;
     const nextGymCycleDays = getGymCycleDays(normalizedPackage);
     
@@ -819,26 +835,29 @@ export const dbService = {
         nextBakedGym = 0;
         nextBakedTrainer = 0;
         nextAmountPaid = payload.amount_paid !== undefined ? payload.amount_paid : 0;
-    } else if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
-        const startDate = getSafeDate(member.package_start_date ?? member.created_at, new Date());
-        const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
-        
-        const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
-        const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
-        gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
-        
-        const pastDaysInCurrentTrainerCycle = hasTrainerPackage(member) ? (daysSinceStart % 30) : 0;
-        const unusedTrainerDays = hasTrainerPackage(member) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
-        trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
-        
-        nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
-        // Subtract admission fee: since baked_gym_cycles resets to 0, the snapshot
-        // will re-add admission_fee to totalGymCost — subtract here to cancel that out.
-        const admissionFeeToSubtract = Number(member.admission_fee) || 0;
-        nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeToSubtract);
-        nextStartDate = toLocalDateInputValue(); // TODAY
-        nextBakedGym = 0;
-        nextBakedTrainer = 0;
+    } else {
+        if (payload.amount_paid !== undefined) {
+            nextAmountPaid = (Number(member.amount_paid) || 0) + payload.amount_paid;
+        }
+        if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
+            const startDate = getSafeDate(member.package_start_date ?? member.created_at, new Date());
+            const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
+            
+            const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
+            const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
+            gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
+            
+            const pastDaysInCurrentTrainerCycle = hasTrainerPackage(member) ? (daysSinceStart % 30) : 0;
+            const unusedTrainerDays = hasTrainerPackage(member) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
+            trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
+            
+            nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
+            const admissionFeeToSubtract = Number(member.admission_fee) || 0;
+            nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeToSubtract);
+            nextStartDate = toLocalDateInputValue(); // TODAY
+            nextBakedGym = 0;
+            nextBakedTrainer = 0;
+        }
     }
 
     const merged = {
@@ -872,6 +891,7 @@ export const dbService = {
     trainer_commission?: number,
     reset_start_date?: boolean,
     amount_paid?: number,
+    custom_gym_fees?: number,
   }) => {
     const normalizedPackage = payload.package_type || 'Basic';
     const normalizedTrainerPackage = payload.trainer_package_type || 'none';
@@ -879,10 +899,6 @@ export const dbService = {
       ? false
       : !!payload.has_cardio;
     const normalizedCommission = Math.max(0, Number(payload.trainer_commission) || 0);
-
-    const nextGymFee = getPackageExpectedGymFee(normalizedPackage, normalizedCardio) ?? 0;
-    const nextTrainerFee = getPackageExpectedTrainerFee(normalizedTrainerPackage, normalizedCommission) ?? 0;
-    const nextGymCycleDays = getGymCycleDays(normalizedPackage);
 
     if(!isDummy) {
         const { data: existing, error: fetchError } = await supabase.from('members').select('*').eq('id', memberId).single();
@@ -894,6 +910,16 @@ export const dbService = {
         const oldTrainerFee = oldSnapshot.recurringTrainerFees;
         const oldGymCycleDays = oldSnapshot.gymCycleDays;
 
+        const isCustom = String(normalizedPackage).toLowerCase().startsWith('custom');
+        let nextGymFee = 0;
+        if (isCustom) {
+          nextGymFee = payload.custom_gym_fees !== undefined ? payload.custom_gym_fees : (Number(existing.gym_fees) || 0);
+        } else {
+          nextGymFee = getPackageExpectedGymFee(normalizedPackage, normalizedCardio) ?? 0;
+        }
+        const nextTrainerFee = getPackageExpectedTrainerFee(normalizedTrainerPackage, normalizedCommission) ?? 0;
+        const nextGymCycleDays = getGymCycleDays(normalizedPackage);
+
         let nextLegacyFees = Number(existing.legacy_fees) || 0;
         let nextBakedGym = Number(existing.baked_gym_cycles) || 0;
         let nextBakedTrainer = Number(existing.baked_trainer_cycles) || 0;
@@ -903,30 +929,35 @@ export const dbService = {
         let gymCredit = 0;
         let trainerCredit = 0;
 
+        const paymentReceived = payload.amount_paid || 0;
+
         if (payload.reset_start_date) {
             nextLegacyFees = 0;
             nextStartDate = toLocalDateInputValue(); // TODAY
             nextBakedGym = 0;
             nextBakedTrainer = 0;
-            nextAmountPaid = payload.amount_paid !== undefined ? payload.amount_paid : 0;
-        } else if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
-            const startDate = getSafeDate(existing.package_start_date ?? existing.created_at, new Date());
-            const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
-            
-            const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
-            const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
-            gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
-            
-            const pastDaysInCurrentTrainerCycle = hasTrainerPackage(existing) ? (daysSinceStart % 30) : 0;
-            const unusedTrainerDays = hasTrainerPackage(existing) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
-            trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
-            
-            nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
-            const admissionFeeToSubtract = Number(existing.admission_fee) || 0;
-            nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeToSubtract);
-            nextStartDate = toLocalDateInputValue(); // TODAY
-            nextBakedGym = 0;
-            nextBakedTrainer = 0;
+            nextAmountPaid = paymentReceived;
+        } else {
+            nextAmountPaid = (Number(existing.amount_paid) || 0) + paymentReceived;
+            if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
+                const startDate = getSafeDate(existing.package_start_date ?? existing.created_at, new Date());
+                const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
+                
+                const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
+                const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
+                gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
+                
+                const pastDaysInCurrentTrainerCycle = hasTrainerPackage(existing) ? (daysSinceStart % 30) : 0;
+                const unusedTrainerDays = hasTrainerPackage(existing) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
+                trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
+                
+                nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
+                const admissionFeeToSubtract = Number(existing.admission_fee) || 0;
+                nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeToSubtract);
+                nextStartDate = toLocalDateInputValue(); // TODAY
+                nextBakedGym = 0;
+                nextBakedTrainer = 0;
+            }
         }
 
         const merged = {
@@ -968,6 +999,21 @@ export const dbService = {
         if (cache?.isReady()) {
           cache.upsertMember({ ...merged, payment_status: nextStatus });
         }
+
+        if (paymentReceived > 0) {
+          const isReset = !!payload.reset_start_date;
+          const ledgerDesc = isReset
+            ? `Package Renewal/Reset (${normalizedPackage}) - ${existing.name}`
+            : `Package Update Fee (${normalizedPackage}) - ${existing.name}`;
+          
+          await dbService.createLedgerEntry({
+            type: 'income',
+            amount: paymentReceived,
+            category: 'Membership',
+            description: ledgerDesc,
+            date: toLocalIsoWithOffset(),
+          });
+        }
         return;
     }
 
@@ -980,36 +1026,51 @@ export const dbService = {
     const oldTrainerFee = oldSnapshot.recurringTrainerFees;
     const oldGymCycleDays = oldSnapshot.gymCycleDays;
 
+    const isCustom = String(normalizedPackage).toLowerCase().startsWith('custom');
+    let nextGymFee = 0;
+    if (isCustom) {
+      nextGymFee = payload.custom_gym_fees !== undefined ? payload.custom_gym_fees : (Number(existing.gym_fees) || 0);
+    } else {
+      nextGymFee = getPackageExpectedGymFee(normalizedPackage, normalizedCardio) ?? 0;
+    }
+    const nextTrainerFee = getPackageExpectedTrainerFee(normalizedTrainerPackage, normalizedCommission) ?? 0;
+    const nextGymCycleDays = getGymCycleDays(normalizedPackage);
+
     let nextLegacyFees = Number(existing.legacy_fees) || 0;
     let nextBakedGym = Number(existing.baked_gym_cycles) || 0;
     let nextBakedTrainer = Number(existing.baked_trainer_cycles) || 0;
     let nextStartDate = existing.package_start_date;
     let nextAmountPaid = existing.amount_paid;
 
+    const paymentReceived = payload.amount_paid || 0;
+
     if (payload.reset_start_date) {
         nextLegacyFees = 0;
         nextStartDate = toLocalDateInputValue(); // TODAY
         nextBakedGym = 0;
         nextBakedTrainer = 0;
-        nextAmountPaid = payload.amount_paid !== undefined ? payload.amount_paid : 0;
-    } else if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
-        const startDate = getSafeDate(existing.package_start_date ?? existing.created_at, new Date());
-        const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
-        
-        const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
-        const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
-        const gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
-        
-        const pastDaysInCurrentTrainerCycle = hasTrainerPackage(existing) ? (daysSinceStart % 30) : 0;
-        const unusedTrainerDays = hasTrainerPackage(existing) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
-        const trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
-        
-        nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
-        const admissionFeeForDummy = Number(existing.admission_fee) || 0;
-        nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeForDummy);
-        nextStartDate = toLocalDateInputValue(); // TODAY
-        nextBakedGym = 0;
-        nextBakedTrainer = 0;
+        nextAmountPaid = paymentReceived;
+    } else {
+        nextAmountPaid = (Number(existing.amount_paid) || 0) + paymentReceived;
+        if (oldGymFee !== nextGymFee || oldTrainerFee !== nextTrainerFee || oldGymCycleDays !== nextGymCycleDays) {
+            const startDate = getSafeDate(existing.package_start_date ?? existing.created_at, new Date());
+            const daysSinceStart = Math.floor(Math.max(0, new Date().getTime() - startDate.getTime()) / DAY_IN_MS);
+            
+            const pastDaysInCurrentGymCycle = daysSinceStart % oldGymCycleDays;
+            const unusedGymDays = oldGymCycleDays - pastDaysInCurrentGymCycle;
+            const gymCredit = Math.round(oldGymFee * (unusedGymDays / oldGymCycleDays));
+            
+            const pastDaysInCurrentTrainerCycle = hasTrainerPackage(existing) ? (daysSinceStart % 30) : 0;
+            const unusedTrainerDays = hasTrainerPackage(existing) ? (30 - pastDaysInCurrentTrainerCycle) : 0;
+            const trainerCredit = Math.round(oldTrainerFee * (unusedTrainerDays / 30));
+            
+            nextLegacyFees = oldSnapshot.totalRequired - gymCredit - trainerCredit;
+            const admissionFeeForDummy = Number(existing.admission_fee) || 0;
+            nextLegacyFees = Math.max(0, nextLegacyFees - admissionFeeForDummy);
+            nextStartDate = toLocalDateInputValue(); // TODAY
+            nextBakedGym = 0;
+            nextBakedTrainer = 0;
+        }
     }
 
     const merged = {
@@ -1028,11 +1089,53 @@ export const dbService = {
     };
     
     const snapshot = getMemberPaymentSnapshot(merged);
+    const nextStatus = snapshot.isDue ? 'due' : 'completed';
 
     simulatedMembers[idx] = {
       ...merged,
-      payment_status: snapshot.isDue ? 'due' : 'completed',
+      payment_status: nextStatus,
     };
+
+    const cache = getCache();
+    if (cache) {
+      cache.upsertMember(simulatedMembers[idx]);
+    }
+
+    if (paymentReceived > 0) {
+      const isReset = !!payload.reset_start_date;
+      const ledgerDesc = isReset
+        ? `Package Renewal/Reset (${normalizedPackage}) - ${existing.name}`
+        : `Package Update Fee (${normalizedPackage}) - ${existing.name}`;
+      
+      simulatedLedgerEntries.push({
+        id: Math.random().toString(),
+        type: 'income',
+        amount: paymentReceived,
+        category: 'Membership',
+        description: ledgerDesc,
+        date: toLocalIsoWithOffset()
+      });
+    }
+  },
+
+  updateMember: async (memberId: string, payload: any) => {
+     if (!isDummy) {
+        const { error } = await supabase.from('members').update(payload).eq('id', memberId);
+        if (error) throw error;
+        const cache = getCache();
+        if (cache?.isReady()) {
+           cache.upsertMember({ id: memberId, ...payload });
+        }
+        return;
+     }
+     const idx = simulatedMembers.findIndex(m => m.id === memberId);
+     if (idx !== -1) {
+        simulatedMembers[idx] = { ...simulatedMembers[idx], ...payload };
+        const cache = getCache();
+        if (cache) {
+           cache.upsertMember(simulatedMembers[idx]);
+        }
+     }
   },
 
   getTrainerStats: async () => {
