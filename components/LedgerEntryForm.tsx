@@ -12,12 +12,23 @@ interface LedgerEntryFormProps {
   createEntry: (payload: any) => Promise<void>;
 }
 
+// Returns today's date as YYYY-MM-DD using LOCAL time (not UTC).
+// new Date().toISOString() always returns UTC, which in PKT (+5) is 5 hours
+// behind local time — causing the date to appear as "yesterday" after midnight.
+const getLocalDateString = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 export function LedgerEntryForm({ onEntryAdded, createEntry }: LedgerEntryFormProps) {
   const [type, setType] = useState<'income' | 'expense'>('income');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -56,7 +67,7 @@ export function LedgerEntryForm({ onEntryAdded, createEntry }: LedgerEntryFormPr
       setAmount('');
       setCategory('');
       setDescription('');
-      setDate(new Date().toISOString().split('T')[0]); // Reset to default
+      setDate(getLocalDateString()); // Reset to local today's date
       setSuccess(true);
       onEntryAdded();
       

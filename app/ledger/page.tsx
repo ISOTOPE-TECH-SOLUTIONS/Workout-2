@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { dbService, supabase } from "@/lib/supabase";
 import { LedgerSummaryCards } from "@/components/LedgerSummaryCards";
 import { LedgerEntryForm } from "@/components/LedgerEntryForm";
@@ -29,15 +29,23 @@ export default function LedgerPage() {
     }
   }, [timeframe, selectedDate]);
 
+  // Keep a stable ref to fetchData so the realtime subscription can always
+  // call the latest version without needing to re-subscribe on every change.
+  const fetchDataRef = useRef(fetchData);
+  useEffect(() => { fetchDataRef.current = fetchData; }, [fetchData]);
+
+  // Fetch whenever timeframe or selectedDate changes.
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
 
-    // Subscribe to real-time changes on ledger_entries
+  // Subscribe to realtime once on mount — never torn down on date changes.
+  useEffect(() => {
     const channel = supabase
       ? supabase.channel('ledger_realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_entries' }, () => {
             console.log("Realtime: ledger_entries changed, fetching data...");
-            fetchData();
+            fetchDataRef.current();
           })
           .subscribe()
       : null;
@@ -45,7 +53,8 @@ export default function LedgerPage() {
     return () => {
       if (channel) channel.unsubscribe();
     };
-  }, [fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalIncome = entries
     .filter(e => e.type === 'income')
