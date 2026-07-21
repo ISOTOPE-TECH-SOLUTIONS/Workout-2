@@ -28,11 +28,23 @@ export function LedgerEntryForm({ onEntryAdded, createEntry }: LedgerEntryFormPr
     setLoading(true);
     setSuccess(false);
     try {
-      // Use the manually selected date
-      // If it's a simple YYYY-MM-DD, we append the current time to keep chronological order
-      const ledgerTimestamp = date === new Date().toISOString().split('T')[0]
-        ? new Date().toISOString()
-        : `${date}T${new Date().toISOString().split('T')[1]}`;
+      // Build a local-timezone ISO string for the selected date so it is stored
+      // on the correct calendar date regardless of the user's UTC offset.
+      // e.g. PKT (UTC+5): new Date().toISOString() returns UTC time which would
+      // shift the stored date by 5 hours and land on the wrong day in Supabase.
+      const buildLocalIso = (dateStr: string): string => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const now = new Date();
+        const local = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        const offsetMinutes = -local.getTimezoneOffset();
+        const sign = offsetMinutes >= 0 ? '+' : '-';
+        const absOffset = Math.abs(offsetMinutes);
+        const oh = String(Math.floor(absOffset / 60)).padStart(2, '0');
+        const om = String(absOffset % 60).padStart(2, '0');
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${y}-${pad(m)}-${pad(d)}T${pad(local.getHours())}:${pad(local.getMinutes())}:${pad(local.getSeconds())}${sign}${oh}:${om}`;
+      };
+      const ledgerTimestamp = buildLocalIso(date);
 
       await createEntry({
         type,

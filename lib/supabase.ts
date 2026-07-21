@@ -1193,19 +1193,17 @@ export const dbService = {
       let query = supabase.from('ledger_entries').select('*');
       
       if (timeframe === 'daily') {
-        const start = new Date(selectedDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(selectedDate);
-        end.setHours(23, 59, 59, 999);
-        query = query.gte('date', start.toISOString()).lte('date', end.toISOString());
+        const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0, 0);
+        const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+        query = query.gte('date', toLocalIsoWithOffset(start)).lte('date', toLocalIsoWithOffset(end));
       } else if (timeframe === 'monthly') {
-        const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+        const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1, 0, 0, 0, 0);
         const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
-        query = query.gte('date', start.toISOString()).lte('date', end.toISOString());
+        query = query.gte('date', toLocalIsoWithOffset(start)).lte('date', toLocalIsoWithOffset(end));
       } else if (timeframe === 'yearly') {
-        const start = new Date(selectedDate.getFullYear(), 0, 1);
+        const start = new Date(selectedDate.getFullYear(), 0, 1, 0, 0, 0, 0);
         const end = new Date(selectedDate.getFullYear(), 11, 31, 23, 59, 59, 999);
-        query = query.gte('date', start.toISOString()).lte('date', end.toISOString());
+        query = query.gte('date', toLocalIsoWithOffset(start)).lte('date', toLocalIsoWithOffset(end));
       }
       
       const { data, error } = await query.order('date', { ascending: false });
