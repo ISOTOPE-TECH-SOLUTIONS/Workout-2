@@ -72,7 +72,7 @@ export function LedgerScreenLock({ onUnlock }: LedgerScreenLockProps) {
                 <Input
                   id="ledger-password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter Wahaj1984"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoFocus
