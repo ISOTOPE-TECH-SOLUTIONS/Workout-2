@@ -5,19 +5,36 @@ import { dbService, supabase } from "@/lib/supabase";
 import { LedgerSummaryCards } from "@/components/LedgerSummaryCards";
 import { LedgerEntryForm } from "@/components/LedgerEntryForm";
 import { LedgerList } from "@/components/LedgerList";
+import { LedgerScreenLock } from "@/components/LedgerScreenLock";
 import { Button } from "@/components/ui/button";
-import { Filter, Download } from "lucide-react";
+import { Filter, Download, Lock } from "lucide-react";
 
 type Timeframe = 'daily' | 'monthly' | 'yearly' | 'all';
 
 export default function LedgerPage() {
+  const [isMounted, setIsMounted] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [entries, setEntries] = useState<any[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>('daily');
   const [activeCategory, setActiveCategory] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    setIsMounted(true);
+    const unlocked = sessionStorage.getItem("financial_ledger_unlocked_v1");
+    if (unlocked === "true") {
+      setIsUnlocked(true);
+    }
+  }, []);
+
+  const handleLock = () => {
+    sessionStorage.removeItem("financial_ledger_unlocked_v1");
+    setIsUnlocked(false);
+  };
+
   const fetchData = useCallback(async () => {
+    if (!isUnlocked) return;
     setLoading(true);
     try {
       const data = await dbService.getLedgerEntries(timeframe, selectedDate);
@@ -27,20 +44,23 @@ export default function LedgerPage() {
     } finally {
       setLoading(false);
     }
-  }, [timeframe, selectedDate]);
+  }, [timeframe, selectedDate, isUnlocked]);
 
   // Keep a stable ref to fetchData so the realtime subscription can always
   // call the latest version without needing to re-subscribe on every change.
   const fetchDataRef = useRef(fetchData);
   useEffect(() => { fetchDataRef.current = fetchData; }, [fetchData]);
 
-  // Fetch whenever timeframe or selectedDate changes.
+  // Fetch whenever timeframe, selectedDate, or isUnlocked changes.
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (isUnlocked) {
+      fetchData();
+    }
+  }, [fetchData, isUnlocked]);
 
-  // Subscribe to realtime once on mount — never torn down on date changes.
+  // Subscribe to realtime once on unlock.
   useEffect(() => {
+    if (!isUnlocked) return;
     const channel = supabase
       ? supabase.channel('ledger_realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_entries' }, () => {
@@ -53,8 +73,13 @@ export default function LedgerPage() {
     return () => {
       if (channel) channel.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isUnlocked]);
+
+  if (!isMounted) return null;
+
+  if (!isUnlocked) {
+    return <LedgerScreenLock onUnlock={() => setIsUnlocked(true)} />;
+  }
 
   const totalIncome = entries
     .filter(e => e.type === 'income')
@@ -100,12 +125,23 @@ export default function LedgerPage() {
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-primary/5 via-background to-background">
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <header>
-          <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent italic">
-            FINANCIAL LEDGER
-          </h1>
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-yellow-500/60 mt-1">Income, Expenses, and Profit Tracking</p>
-        </header>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent italic">
+              FINANCIAL LEDGER
+            </h1>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-yellow-500/60 mt-1">Income, Expenses, and Profit Tracking</p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleLock}
+            className="text-[10px] font-black uppercase tracking-widest border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 hover:text-yellow-300 ml-2 h-8"
+            title="Lock Financial Ledger Screen"
+          >
+            <Lock className="w-3.5 h-3.5 mr-1.5" /> Lock Ledger
+          </Button>
+        </div>
 
         <div className="flex flex-col items-end gap-3">
           <div className="flex flex-wrap items-center gap-2 bg-secondary/30 p-1.5 rounded-xl border border-border/40 backdrop-blur-sm">
@@ -231,3 +267,4 @@ export default function LedgerPage() {
     </div>
   );
 }
+
