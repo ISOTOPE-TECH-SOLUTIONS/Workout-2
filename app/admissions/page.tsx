@@ -18,7 +18,7 @@ const getTodayLocalDate = () => {
    return `${year}-${month}-${day}`;
 };
 
-const CARDIO_FEE = 2500;
+const CARDIO_FEE = 3000;
 const CARDIO_ONLY_PACKAGE = "Cardio Only";
 
 type AdmissionMode = 'member' | 'employee';
@@ -162,7 +162,7 @@ export default function AdmissionsPage() {
 
       // Cardio Add-on Price
       const cardioAddonPkg = addons.find(a => a.name.toLowerCase().includes('cardio') || a.id === 'add_cardio');
-      const cardioFee = cardioAddonPkg ? cardioAddonPkg.price : 2500;
+      const cardioFee = cardioAddonPkg ? cardioAddonPkg.price : 3000;
 
       const isCardioOnlyPackage = formData.package_type === CARDIO_ONLY_PACKAGE || formData.package_type === "pkg_cardio";
       if (!isCardioOnlyPackage && formData.has_cardio) {

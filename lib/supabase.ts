@@ -130,7 +130,7 @@ const DEFAULT_PACKAGES = [
 ];
 
 const DEFAULT_ADDONS = [
-  { id: "add_cardio", name: "Cardio Add-on (Monthly)", price: 2500 },
+  { id: "add_cardio", name: "Cardio Add-on (Monthly)", price: 3000 },
   { id: "add_pool_only", name: "Pool Only (Monthly)", price: 3000 },
   { id: "add_pool_add", name: "Pool Add-on (Monthly)", price: 1500 }
 ];
@@ -189,7 +189,7 @@ const getPackageExpectedGymFee = (packageType: unknown, hasCardio: unknown) => {
   }
 
   const cardioAddonPkg = cachedAddons.find(a => a.name.toLowerCase().includes('cardio'));
-  const cardioFee = cardioAddonPkg ? cardioAddonPkg.price : 2500;
+  const cardioFee = cardioAddonPkg ? cardioAddonPkg.price : 3000;
   const addonCost = hasCardio && normalized !== CARDIO_ONLY_PACKAGE ? cardioFee : 0;
 
   return basePrice + addonCost;

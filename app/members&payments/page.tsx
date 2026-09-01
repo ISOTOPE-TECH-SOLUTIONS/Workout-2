@@ -954,7 +954,7 @@ export default function MembersAndPaymentsPage() {
                               >
                                 <div className="flex flex-col text-left">
                                   <span className="text-xs font-bold text-white uppercase tracking-tight">Cardio Addon</span>
-                                  <span className="text-[9px] text-muted-foreground uppercase">+ PKR 2,500 / Month</span>
+                                  <span className="text-[9px] text-muted-foreground uppercase">+ PKR {((addons.find(a => a.name.toLowerCase().includes('cardio') || a.id === 'add_cardio')?.price) || 3000).toLocaleString()} / Month</span>
                                 </div>
                                 <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${planDraft.has_cardio ? 'bg-emerald-500 border-emerald-500' : 'border-border'}`}>
                                   {planDraft.has_cardio && <CheckCircle2 className="w-3.5 h-3.5 text-black font-black" />}
